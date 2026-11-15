@@ -62,8 +62,10 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
   await db.exec(read('schema.sql'));
   await db.exec(read('roles.sql'));
   await db.exec(read('policies.sql'));
+  await db.exec(read('ops.sql'));
   if (options.seed !== false) {
     await db.exec(read('seed.sql'));
+    await db.exec(read('ops_seed.sql'));
   }
 
   return {

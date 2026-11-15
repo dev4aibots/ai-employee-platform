@@ -4,7 +4,7 @@
   "private": false,
   "type": "module",
   "license": "MIT",
-  "description": "Multi-tenant AI Employee platform: Postgres RLS tenancy, encrypted credential vault, idempotent webhooks, n8n dispatch, and a hash-chained audit ledger.",
+  "description": "Multi-tenant AI employee platform: Postgres RLS tenancy, encrypted credential vault, idempotent webhooks, n8n dispatch, a hash-chained audit ledger, and an AI sales-ops pipeline with human approval gates.",
   "engines": {
     "node": ">=20"
   },
@@ -17,7 +17,8 @@
     "report": "tsx src/cli/report.ts"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.5.16"
+    "@electric-sql/pglite": "^0.5.16",
+    "@noble/hashes": "^1.8.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

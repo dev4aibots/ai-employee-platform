@@ -10,15 +10,16 @@
 | Webhook processing | Duplicate charges, duplicate emails | Claim-first idempotency with payload hashing |
 | Audit history | Dispute resolution, incident forensics | Hash chain, append-only, no update/delete policy |
 | Model spend | Runaway agent loops | Per-tenant token bucket, cost recorded per run |
+| Outbound outreach | An agent emailing a customer without a human decision | approval gate, immutable decision, write-ahead send claim |
 
 ## Trust boundaries
 
 ```
- untrusted                │  semi-trusted            │  trusted
- ─────────────────────────┼──────────────────────────┼──────────────────────
- browser session          │ n8n (internal network)   │ service role
- tenant-supplied documents│ provider webhooks        │ database superuser
- model output             │                          │ KMS / master key
+ untrusted                  semi-trusted              trusted
+ ---------------------------------------------------------------------
+ browser session            n8n (internal network)    service role
+ tenant-supplied documents  provider webhooks         database superuser
+ model output                                         KMS / master key
 ```
 
 Three rules follow:
@@ -30,9 +31,15 @@ Three rules follow:
 ## Controls in detail
 
 ### Tenancy
-RLS is enabled *and forced* on all eight tables. `FORCE` matters because without it the table owner silently bypasses policies — a very common way RLS ends up decorative. `anon` holds no table grants at all, so an unauthenticated request fails at the privilege layer before RLS is even consulted.
+RLS is enabled *and forced* on all fifteen tenant tables (eight core, seven operations). `FORCE` matters because without it the table owner silently bypasses policies — a very common way RLS ends up decorative. `anon` holds no table grants at all, so an unauthenticated request fails at the privilege layer before RLS is even consulted.
 
 The `messages` insert policy checks two things, not one: that `user_id` is the caller, **and** that `employee_id` belongs to the caller. Checking only `user_id` allows a cross-tenant reference where the row looks owned but points at someone else's data.
+
+### Agent authority
+
+The agent may read leads, score them and write drafts. It cannot send. `sendDraft` requires a draft whose status is `approved`, approval is a row that can be written once (`draft_id unique`) and never updated or deleted by a tenant session, and the send itself is claimed on a unique `draft_id` before the provider is called, so a retry cannot produce a second email.
+
+Draft bodies, company names and signal text are influenced by whoever wrote the source data. The console escapes every one of them at render time and never inserts database text as HTML.
 
 ### Credentials
 - AES-256-GCM, 96-bit random IV per write, 128-bit tag.

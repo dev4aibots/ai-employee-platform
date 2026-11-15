@@ -1,461 +1,496 @@
 import { PGlite } from '@electric-sql/pglite';
-import { POLICIES_SQL, ROLES_SQL, SCHEMA_SQL, SEED_SQL } from './generated/sql';
-import './style.css';
+import { OPS_SEED_SQL, OPS_SQL, POLICIES_SQL, ROLES_SQL, SCHEMA_SQL, SEED_SQL } from './generated/sql';
+import {
+  decideApproval,
+  dryRunProvider,
+  runSalesWorkflow,
+  sendDraft,
+  verifyApprovalChain,
+} from '../../src/ops/pipeline';
+import {
+  getAnalytics,
+  getRunSteps,
+  listApprovalQueue,
+  listRecentDrafts,
+  listRuns,
+  listScoredLeads,
+} from '../../src/ops/analytics';
+import type { Queryable } from '../../src/db/harness';
+import { renderApp } from './views';
+import type { IsolationRow, Model, View } from './types';
+import './styles/tokens.css';
+import './styles/app.css';
 
-// ---------------------------------------------------------------------------
-// Tenant ids come from db/seed.sql. Nothing here is generated at runtime.
-// ---------------------------------------------------------------------------
+/**
+ * Browser console.
+ *
+ * This is not a mock of the platform: it boots PostgreSQL (PGlite, the real
+ * engine compiled to WebAssembly), applies the repository's own SQL files, and
+ * calls the same `src/ops` pipeline the Node tests and the report CLI call.
+ * Every number rendered comes from a query executed in this tab.
+ */
+
 const ACME = '11111111-1111-4111-8111-111111111111';
 const GLOBEX = '22222222-2222-4222-8222-222222222222';
-const ACME_EMPLOYEE = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
-const GLOBEX_EMPLOYEE = 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb';
-const GLOBEX_DOC = 'eeeeeeee-2222-4222-8222-eeeeeeeeeeee';
+const GOAL = 'Find leads that have not replied in 7 days, rank them, draft the outreach';
+const ACTOR = 'devraj@acme.test';
+
+const TABLES = ['leads', 'lead_signals', 'drafts', 'approvals', 'sends', 'ops_runs', 'ops_run_steps'] as const;
+const ISOLATION_SQL = TABLES.map(
+  (table) => `select '${table}' as table_name, count(*)::text as n from ${table}`,
+).join(' union all ');
+
+const app = document.getElementById('app') as HTMLElement;
+
+const state: Model = {
+  stage: 'boot',
+  bootStep: 0,
+  bootError: null,
+  view: 'overview',
+  busy: null,
+  toast: null,
+  analytics: null,
+  queue: [],
+  drafts: [],
+  leads: [],
+  runs: [],
+  steps: [],
+  chain: null,
+  isolation: [],
+  attack: null,
+  selectedLeadId: null,
+  selectedDraftId: null,
+  selectedRunId: null,
+  lastRun: null,
+};
 
 let db: PGlite;
-
-const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
+let toastToken = 0;
 
 // ---------------------------------------------------------------------------
-// Postgres session helpers — the same shape as src/db/harness.ts
+// Database session helpers
+//
+// PGlite is one connection, so "who am I" is session state. Two tenant blocks
+// must never overlap or the second resets the first's role mid-query. Every
+// identity switch therefore goes through this queue.
 // ---------------------------------------------------------------------------
+
+let sessionQueue: Promise<unknown> = Promise.resolve();
+
+function serial<T>(fn: () => Promise<T>): Promise<T> {
+  const next = sessionQueue.then(fn, fn);
+  sessionQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
 async function resetIdentity(): Promise<void> {
   await db.exec('reset role');
   await db.query(`select set_config('request.jwt.claim.sub', '', false)`);
   await db.query(`select set_config('app.privileged', 'off', false)`);
 }
 
-async function asTenant<T>(userId: string, fn: () => Promise<T>): Promise<T> {
-  await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [userId]);
-  await db.exec('set role authenticated');
-  try {
-    return await fn();
-  } finally {
-    await resetIdentity();
-  }
-}
-
-async function asAnon<T>(fn: () => Promise<T>): Promise<T> {
-  await db.exec('set role anon');
-  try {
-    return await fn();
-  } finally {
-    await resetIdentity();
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Scenario model
-// ---------------------------------------------------------------------------
-type Expectation = 'allowed' | 'blocked';
-
-interface Outcome {
-  rows: unknown[];
-  error?: string;
-}
-
-interface Scenario {
-  id: string;
-  title: string;
-  why: string;
-  sql: string;
-  expect: Expectation;
-  run: () => Promise<Outcome>;
-}
-
-async function attempt(fn: () => Promise<{ rows: unknown[] }>): Promise<Outcome> {
-  try {
-    const result = await fn();
-    return { rows: result.rows };
-  } catch (error) {
-    return { rows: [], error: (error as Error).message.split('\n')[0] ?? 'unknown error' };
-  }
-}
-
-const SCENARIOS: Scenario[] = [
-  {
-    id: 'acme-reads',
-    title: 'Acme reads its own documents',
-    why: 'The baseline. A tenant must be able to see its own data, otherwise every refusal below could be a broken query rather than a working policy.',
-    sql: 'select title from documents',
-    expect: 'allowed',
-    run: () =>
-      attempt(() =>
-        asTenant(ACME, () => db.query<{ title: string }>('select title from documents order by title')),
-      ),
-  },
-  {
-    id: 'globex-reads',
-    title: 'Globex reads its own documents',
-    why: 'The same query, a different session, a different answer. Row level security is per row, not per deployment.',
-    sql: 'select title from documents',
-    expect: 'allowed',
-    run: () =>
-      attempt(() =>
-        asTenant(GLOBEX, () => db.query<{ title: string }>('select title from documents order by title')),
-      ),
-  },
-  {
-    id: 'acme-steals-doc',
-    title: 'Acme asks for a Globex document by primary key',
-    why: 'Knowing the UUID of another tenant row must not be enough. This returns zero rows rather than an error, so an attacker learns nothing from the difference.',
-    sql: `select * from documents where id = '${GLOBEX_DOC}'`,
-    expect: 'blocked',
-    run: () =>
-      attempt(() => asTenant(ACME, () => db.query('select * from documents where id = $1', [GLOBEX_DOC]))),
-  },
-  {
-    id: 'acme-steals-profile',
-    title: 'Acme asks for the Globex billing profile',
-    why: 'Plan, seats and trial dates are commercially sensitive. Same rule, different table.',
-    sql: `select email, plan from profiles where id = '${GLOBEX}'`,
-    expect: 'blocked',
-    run: () =>
-      attempt(() =>
-        asTenant(ACME, () => db.query('select email, plan from profiles where id = $1', [GLOBEX])),
-      ),
-  },
-  {
-    id: 'acme-steals-employee',
-    title: 'Acme asks for a Globex deployed employee',
-    why: 'The agent inventory reveals what a competitor has automated.',
-    sql: `select * from employees where id = '${GLOBEX_EMPLOYEE}'`,
-    expect: 'blocked',
-    run: () =>
-      attempt(() => asTenant(ACME, () => db.query('select * from employees where id = $1', [GLOBEX_EMPLOYEE]))),
-  },
-  {
-    id: 'anon-reads',
-    title: 'An unauthenticated visitor reads documents',
-    why: 'The public role holds no table grants at all, so this fails at the privilege layer before row level security is consulted. Two independent controls, not one.',
-    sql: 'select title from documents   -- as role anon',
-    expect: 'blocked',
-    run: () => attempt(() => asAnon(() => db.query('select title from documents'))),
-  },
-  {
-    id: 'acme-forges-doc',
-    title: 'Acme inserts a document owned by Globex',
-    why: 'A read filter is useless if writes are unchecked. The WITH CHECK clause rejects the row outright.',
-    sql: `insert into documents (user_id, title, content) values ('${GLOBEX}', 'forged', 'forged')`,
-    expect: 'blocked',
-    run: () =>
-      attempt(() =>
-        asTenant(ACME, () =>
-          db.query(`insert into documents (user_id, title, content) values ($1, 'forged', 'forged')`, [GLOBEX]),
-        ),
-      ),
-  },
-  {
-    id: 'acme-cross-references',
-    title: 'Acme attaches a message to a Globex employee',
-    why: 'The subtle one. Checking only whether user_id matches would allow this, because the row is owned by Acme while pointing at a Globex employee. The policy also verifies employee ownership.',
-    sql: `insert into messages (user_id, employee_id, role, content)
-values ('${ACME}', '${GLOBEX_EMPLOYEE}', 'user', 'cross tenant')`,
-    expect: 'blocked',
-    run: () =>
-      attempt(() =>
-        asTenant(ACME, () =>
-          db.query(
-            `insert into messages (user_id, employee_id, role, content) values ($1, $2, 'user', 'cross tenant reference')`,
-            [ACME, GLOBEX_EMPLOYEE],
-          ),
-        ),
-      ),
-  },
-  {
-    id: 'acme-legit-message',
-    title: 'Acme attaches a message to its own employee',
-    why: 'The same insert with a legitimate reference must succeed. A control that blocks everything is not a control.',
-    sql: `insert into messages (user_id, employee_id, role, content)
-values ('${ACME}', '${ACME_EMPLOYEE}', 'user', 'legitimate')`,
-    expect: 'allowed',
-    run: () =>
-      attempt(() =>
-        asTenant(ACME, () =>
-          db.query(
-            `insert into messages (user_id, employee_id, role, content) values ($1, $2, 'user', 'legitimate message') returning id`,
-            [ACME, ACME_EMPLOYEE],
-          ),
-        ),
-      ),
-  },
-  {
-    id: 'acme-escalates',
-    title: 'Acme upgrades itself to the Scale plan',
-    why: 'Policies decide rows; they do not decide columns. A tenant may edit its own profile, so a trigger compares old and new values and refuses anything billing-owned.',
-    sql: `update profiles set plan = 'scale', seats = 500 where id = '${ACME}'`,
-    expect: 'blocked',
-    run: () =>
-      attempt(() =>
-        asTenant(ACME, () => db.query(`update profiles set plan = 'scale', seats = 500 where id = $1`, [ACME])),
-      ),
-  },
-  {
-    id: 'acme-deletes',
-    title: 'Acme deletes a Globex document',
-    why: 'Destructive cross-tenant access is still cross-tenant access. The row is verified intact from a privileged session afterwards, so a silent no-op cannot hide a real deletion.',
-    sql: `delete from documents where id = '${GLOBEX_DOC}'`,
-    expect: 'blocked',
-    run: async () => {
-      const outcome = await attempt(() =>
-        asTenant(ACME, () => db.query('delete from documents where id = $1', [GLOBEX_DOC])),
-      );
-
-      await db.query(`select set_config('app.privileged', 'on', false)`);
-      await db.exec('set role service_role');
-      const still = await db.query<{ n: number }>('select count(*)::int as n from documents where id = $1', [
-        GLOBEX_DOC,
-      ]);
+function asTenant<T>(userId: string, fn: (q: Queryable) => Promise<T>): Promise<T> {
+  return serial(async () => {
+    await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [userId]);
+    await db.exec('set role authenticated');
+    try {
+      return await fn({
+        query: (sql, params) => db.query(sql, params as never) as Promise<{ rows: never[] }>,
+      });
+    } finally {
       await resetIdentity();
+    }
+  });
+}
 
-      const survived = Number(still.rows[0]?.n ?? 0) === 1;
-      return survived ? outcome : { rows: [{ note: 'ROW WAS DELETED' }] };
-    },
-  },
-  {
-    id: 'acme-self-edit',
-    title: 'Acme edits a harmless profile field',
-    why: 'The company name is legitimately the tenant own. The guard must allow it, or the product is unusable and someone will disable the guard.',
-    sql: `update profiles set company_name = 'Acme Robotics Pvt Ltd' where id = '${ACME}'`,
-    expect: 'allowed',
-    run: () =>
-      attempt(() =>
-        asTenant(ACME, () =>
-          db.query(
-            `update profiles set company_name = 'Acme Robotics Pvt Ltd' where id = $1 returning company_name`,
-            [ACME],
-          ),
-        ),
-      ),
-  },
-];
+function asAnon<T>(fn: (q: Queryable) => Promise<T>): Promise<T> {
+  return serial(async () => {
+    await db.exec('set role anon');
+    try {
+      return await fn({
+        query: (sql, params) => db.query(sql, params as never) as Promise<{ rows: never[] }>,
+      });
+    } finally {
+      await resetIdentity();
+    }
+  });
+}
 
-// ---------------------------------------------------------------------------
-// Verdict
-// ---------------------------------------------------------------------------
-type Verdict = 'pass' | 'fail';
-
-function judge(scenario: Scenario, outcome: Outcome): Verdict {
-  const refused = Boolean(outcome.error) || outcome.rows.length === 0;
-  if (scenario.expect === 'blocked') return refused ? 'pass' : 'fail';
-  return !refused ? 'pass' : 'fail';
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
-function formatRows(rows: unknown[]): string {
-  if (rows.length === 0) return '(no rows)';
-  return JSON.stringify(rows, null, 2);
-}
+function render(): void {
+  const active = document.activeElement as HTMLElement | null;
+  const focusKey = active?.dataset.action
+    ? JSON.stringify({ action: active.dataset.action, id: active.dataset.id ?? '', view: active.dataset.view ?? '' })
+    : null;
 
-function renderIndex(): void {
-  $('scenario-list').innerHTML = SCENARIOS.map(
-    (scenario, index) => `
-      <li data-n="${String(index + 1).padStart(2, '0')}" data-state="pending" data-target="${scenario.id}">
-        <button type="button" class="index-link">${escapeHtml(scenario.title)}</button>
-      </li>
-    `,
-  ).join('');
+  app.innerHTML = renderApp(state);
 
-  document.querySelectorAll<HTMLButtonElement>('.index-link').forEach((button) => {
-    button.addEventListener('click', () => {
-      const id = button.closest<HTMLElement>('li')!.dataset.target!;
-      const card = document.querySelector<HTMLElement>(`[data-scenario="${id}"]`);
-      if (!card) return;
-      const toggle = card.querySelector<HTMLButtonElement>('.scenario__toggle')!;
-      const body = card.querySelector<HTMLElement>('.scenario__body')!;
-      toggle.setAttribute('aria-expanded', 'true');
-      body.hidden = false;
-      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  });
-}
-
-function renderCards(): void {
-  $('output-body').innerHTML = SCENARIOS.map(
-    (scenario, index) => `
-      <article class="scenario" data-scenario="${scenario.id}" data-state="pending">
-        <button class="scenario__toggle" type="button" aria-expanded="false">
-          <span class="scenario__index">${String(index + 1).padStart(2, '0')}</span>
-          <span class="scenario__title">${escapeHtml(scenario.title)}</span>
-          <span class="scenario__verdict" aria-live="polite"></span>
-          <span class="scenario__timing"></span>
-        </button>
-        <div class="scenario__body" hidden></div>
-      </article>
-    `,
-  ).join('');
-
-  document.querySelectorAll<HTMLButtonElement>('.scenario__toggle').forEach((button) => {
-    button.addEventListener('click', () => {
-      const card = button.closest<HTMLElement>('.scenario')!;
-      const body = card.querySelector<HTMLElement>('.scenario__body')!;
-      const expanded = button.getAttribute('aria-expanded') === 'true';
-      button.setAttribute('aria-expanded', String(!expanded));
-      body.hidden = expanded;
-    });
-  });
-}
-
-function syncIndex(scenarioId: string, verdict: Verdict): void {
-  const item = document.querySelector<HTMLElement>(`[data-target="${scenarioId}"]`);
-  if (item) item.dataset.state = verdict;
-}
-
-function renderScenarioResult(scenario: Scenario, outcome: Outcome, verdict: Verdict, ms: number): void {
-  const card = document.querySelector<HTMLElement>(`[data-scenario="${scenario.id}"]`);
-  if (!card) return;
-
-  card.dataset.state = verdict;
-  card.querySelector<HTMLElement>('.scenario__verdict')!.textContent = verdict === 'pass' ? 'PASS' : 'FAIL';
-  card.querySelector<HTMLElement>('.scenario__timing')!.textContent = `${ms} ms`;
-
-  const body = card.querySelector<HTMLElement>('.scenario__body')!;
-  const errorBlock = outcome.error
-    ? `<pre class="result result--error">${escapeHtml(outcome.error)}</pre>`
-    : '';
-  const rowsBlock = outcome.error
-    ? ''
-    : `<pre class="result">${escapeHtml(formatRows(outcome.rows))}</pre>`;
-
-  body.innerHTML = `
-    <p class="scenario__why">${escapeHtml(scenario.why)}</p>
-    <p class="scenario__label">SQL</p>
-    <pre class="result result--sql">${escapeHtml(scenario.sql)}</pre>
-    <p class="scenario__label">Expected</p>
-    <p class="scenario__expect">${scenario.expect === 'blocked' ? 'refused by the database' : 'returns rows'}</p>
-    <p class="scenario__label">Actual</p>
-    ${errorBlock}${rowsBlock}
-  `;
-
-  syncIndex(scenario.id, verdict);
-}
-
-function setStatus(text: string, state: 'pending' | 'ready' | 'error'): void {
-  const el = $('boot-status');
-  el.textContent = text;
-  el.className = `status status--${state}`;
-}
-
-function setMeta(text: string): void {
-  $('output-meta').textContent = text;
-}
-
-// ---------------------------------------------------------------------------
-// Runner
-// ---------------------------------------------------------------------------
-async function runScenario(scenario: Scenario): Promise<Verdict> {
-  const started = performance.now();
-  const outcome = await scenario.run();
-  const elapsed = Math.round(performance.now() - started);
-  const verdict = judge(scenario, outcome);
-  renderScenarioResult(scenario, outcome, verdict, elapsed);
-  return verdict;
-}
-
-async function runAll(): Promise<void> {
-  const button = $<HTMLButtonElement>('run-all');
-  button.disabled = true;
-  button.textContent = 'Running…';
-
-  document.querySelectorAll<HTMLButtonElement>('.scenario__toggle').forEach((toggle) => {
-    toggle.setAttribute('aria-expanded', 'false');
-    toggle.closest<HTMLElement>('.scenario')!.querySelector<HTMLElement>('.scenario__body')!.hidden = true;
-  });
-
-  let passed = 0;
-  for (const scenario of SCENARIOS) {
-    const verdict = await runScenario(scenario);
-    if (verdict === 'pass') passed += 1;
-    setMeta(`${passed}/${SCENARIOS.length} passed so far`);
+  if (focusKey) {
+    const { action, id, view } = JSON.parse(focusKey) as { action: string; id: string; view: string };
+    const selector = [
+      `[data-action="${action}"]`,
+      id ? `[data-id="${id}"]` : '',
+      view ? `[data-view="${view}"]` : '',
+    ].join('');
+    app.querySelector<HTMLElement>(selector)?.focus();
   }
 
-  const all = passed === SCENARIOS.length;
-  setMeta(`${passed}/${SCENARIOS.length} passed`);
-  setStatus(
-    all
-      ? `All ${SCENARIOS.length} scenarios behaved as asserted. The database refused every cross-tenant attempt.`
-      : `${SCENARIOS.length - passed} scenario(s) did not match the assertion. That is a real finding, not a display glitch.`,
-    all ? 'ready' : 'error',
-  );
-
-  button.disabled = false;
-  button.textContent = 'Run all scenarios again';
+  if (state.selectedLeadId) {
+    app.querySelector<HTMLElement>('.drawer [data-action="close-drawer"]')?.focus();
+  }
 }
 
-async function resetDatabase(): Promise<void> {
-  const button = $<HTMLButtonElement>('reset');
-  button.disabled = true;
-
-  db = await PGlite.create();
-  await db.exec(SCHEMA_SQL);
-  await db.exec(ROLES_SQL);
-  await db.exec(POLICIES_SQL);
-  await db.exec(SEED_SQL);
-
-  document.querySelectorAll<HTMLElement>('.scenario').forEach((card) => {
-    card.dataset.state = 'pending';
-    card.querySelector<HTMLElement>('.scenario__verdict')!.textContent = '';
-    card.querySelector<HTMLElement>('.scenario__timing')!.textContent = '';
-    const body = card.querySelector<HTMLElement>('.scenario__body')!;
-    body.hidden = true;
-    body.innerHTML = '';
-  });
-  document.querySelectorAll<HTMLElement>('[data-target]').forEach((item) => {
-    item.dataset.state = 'pending';
-  });
-
-  setMeta('idle');
-  setStatus('Fresh database. Press “Run all scenarios”.', 'ready');
-  button.disabled = false;
-  $<HTMLButtonElement>('run-all').textContent = 'Run all scenarios';
+function toast(kind: 'ok' | 'bad', text: string): void {
+  state.toast = { kind, text };
+  const token = ++toastToken;
+  setTimeout(() => {
+    if (token === toastToken) {
+      state.toast = null;
+      render();
+    }
+  }, 6000);
 }
+
+function go(view: View): void {
+  if (state.view === view) {
+    render();
+    return;
+  }
+  // The hash is the router: every view is linkable and the back button works.
+  location.hash = view;
+}
+
+const VIEWS: View[] = ['overview', 'leads', 'approvals', 'runs', 'isolation'];
+
+function viewFromHash(): View | null {
+  const raw = location.hash.replace(/^#/, '');
+  return VIEWS.includes(raw as View) ? (raw as View) : null;
+}
+
+window.addEventListener('hashchange', () => {
+  const view = viewFromHash();
+  if (!view || view === state.view) return;
+  state.view = view;
+  state.selectedLeadId = null;
+  state.attack = null;
+  render();
+  document.getElementById('content')?.scrollIntoView({ block: 'start' });
+});
+
+// ---------------------------------------------------------------------------
+// Data loading
+// ---------------------------------------------------------------------------
+
+async function loadIsolation(): Promise<IsolationRow[]> {
+  const countFor = async (userId: string): Promise<Map<string, number>> => {
+    const rows = await asTenant(userId, (q) => q.query<{ table_name: string; n: string }>(ISOLATION_SQL));
+    return new Map(rows.rows.map((row) => [row.table_name, Number(row.n)]));
+  };
+
+  // Sequential on purpose: one connection, one identity at a time.
+  const acme = await countFor(ACME);
+  const globex = await countFor(GLOBEX);
+  return TABLES.map((table) => ({
+    table,
+    acme: acme.get(table) ?? 0,
+    globex: globex.get(table) ?? 0,
+  }));
+}
+
+async function refresh(): Promise<void> {
+  const data = await asTenant(ACME, async (q) => ({
+    analytics: await getAnalytics(q, ACME),
+    queue: await listApprovalQueue(q, ACME, 50),
+    drafts: await listRecentDrafts(q, ACME, 40),
+    leads: await listScoredLeads(q, ACME, 200),
+    runs: await listRuns(q, ACME, 20),
+    chain: await verifyApprovalChain({ db: q }, ACME),
+  }));
+
+  state.analytics = data.analytics;
+  state.queue = data.queue;
+  state.drafts = data.drafts;
+  state.leads = data.leads;
+  state.runs = data.runs;
+  state.chain = data.chain;
+
+  if (!state.selectedRunId || !data.runs.some((run) => run.id === state.selectedRunId)) {
+    state.selectedRunId = data.runs[0]?.id ?? null;
+  }
+  state.steps = state.selectedRunId
+    ? await asTenant(ACME, (q) => getRunSteps(q, ACME, state.selectedRunId as string))
+    : [];
+
+  if (state.selectedDraftId && !data.queue.some((item) => item.draftId === state.selectedDraftId)) {
+    state.selectedDraftId = data.queue[0]?.draftId ?? null;
+  }
+  if (!state.selectedDraftId) {
+    state.selectedDraftId = data.queue[0]?.draftId ?? null;
+  }
+
+  state.isolation = await loadIsolation();
+  render();
+}
+
+// ---------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------
+
+async function runPlay(): Promise<void> {
+  if (state.busy) return;
+  state.busy = 'run';
+  render();
+
+  try {
+    const summary = await asTenant(ACME, (q) =>
+      runSalesWorkflow({ db: q, now: () => new Date(), sleep }, {
+        userId: ACME,
+        goal: GOAL,
+        limit: 8,
+      }),
+    );
+    state.lastRun = summary;
+    toast(
+      'ok',
+      summary.draftsMade > 0
+        ? `${summary.draftsMade} drafts from ${summary.leadsSeen} leads, waiting for approval.`
+        : `${summary.leadsSeen} leads examined, 0 new drafts: every content hash already exists.`,
+    );
+    await refresh();
+  } catch (error) {
+    toast('bad', error instanceof Error ? error.message : String(error));
+  } finally {
+    state.busy = null;
+    render();
+  }
+}
+
+async function decide(draftId: string, decision: 'approved' | 'rejected'): Promise<void> {
+  if (state.busy) return;
+  const note = (document.getElementById('decision-note') as HTMLTextAreaElement | null)?.value ?? '';
+  state.busy = 'decide';
+  render();
+
+  try {
+    const result = await asTenant(ACME, (q) =>
+      decideApproval({ db: q, now: () => new Date() }, {
+        userId: ACME,
+        draftId,
+        decision,
+        actor: ACTOR,
+        note: note.trim() || undefined,
+      }),
+    );
+    toast(
+      'ok',
+      result.alreadyRecorded
+        ? `Already recorded as ${result.decision} at entry #${result.seq}.`
+        : `${decision === 'approved' ? 'Approved' : 'Rejected'} as audit entry #${result.seq}.`,
+    );
+    await refresh();
+  } catch (error) {
+    toast('bad', error instanceof Error ? error.message : String(error));
+  } finally {
+    state.busy = null;
+    render();
+  }
+}
+
+async function send(draftId: string): Promise<void> {
+  if (state.busy) return;
+  state.busy = 'send';
+  render();
+
+  try {
+    const result = await asTenant(ACME, (q) =>
+      sendDraft({ db: q, provider: dryRunProvider, now: () => new Date() }, {
+        userId: ACME,
+        draftId,
+        actor: ACTOR,
+      }),
+    );
+    toast(
+      'ok',
+      result.alreadySent
+        ? `Already sent. Receipt ${result.messageId}.`
+        : `Sent through ${dryRunProvider.id} in ${result.attempts} attempt(s). Receipt ${result.messageId}.`,
+    );
+    await refresh();
+  } catch (error) {
+    toast('bad', error instanceof Error ? error.message : String(error));
+  } finally {
+    state.busy = null;
+    render();
+  }
+}
+
+async function runAttack(kind: 'write' | 'anon'): Promise<void> {
+  if (state.busy) return;
+  state.busy = 'attack';
+  render();
+
+  const writeSql = `insert into leads (user_id, company, domain, contact_name, contact_role, contact_email, source)
+values ('${ACME}', 'Forged Co', 'forged.example', 'Attacker', 'CEO', 'a@forged.example', 'inbound')`;
+  const anonSql = 'select count(*) from leads';
+
+  try {
+    if (kind === 'write') {
+      await asTenant(GLOBEX, (q) =>
+        q.query(
+          `insert into leads (user_id, company, domain, contact_name, contact_role, contact_email, source)
+           values ($1, 'Forged Co', 'forged.example', 'Attacker', 'CEO', 'a@forged.example', 'inbound')`,
+          [ACME],
+        ),
+      );
+      state.attack = { label: 'Globex inserting a lead owned by Acme', sql: writeSql, error: 'no error: the row was accepted' };
+      toast('bad', 'The write was not blocked.');
+    } else {
+      await asAnon((q) => q.query(anonSql));
+      state.attack = { label: 'anon reading leads', sql: anonSql, error: 'no error: the read was accepted' };
+      toast('bad', 'anon was allowed to read.');
+    }
+  } catch (error) {
+    state.attack = {
+      label: kind === 'write' ? 'Globex inserting a lead owned by Acme' : 'anon reading leads',
+      sql: kind === 'write' ? writeSql : anonSql,
+      error: error instanceof Error ? error.message : String(error),
+    };
+    toast('ok', 'Blocked by the database.');
+  } finally {
+    state.busy = null;
+    render();
+  }
+}
+
+async function reverifyChain(): Promise<void> {
+  try {
+    state.chain = await asTenant(ACME, (q) => verifyApprovalChain({ db: q }, ACME));
+    toast(state.chain.ok ? 'ok' : 'bad', state.chain.ok ? `${state.chain.checked} entries verified.` : `Chain broken at ${state.chain.brokenAt}.`);
+    render();
+  } catch (error) {
+    toast('bad', error instanceof Error ? error.message : String(error));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+document.addEventListener('click', (event) => {
+  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-action]');
+  if (!target) return;
+
+  const action = target.dataset.action;
+  const id = target.dataset.id ?? '';
+
+  switch (action) {
+    case 'nav':
+      go((target.dataset.view as View) ?? 'overview');
+      break;
+    case 'run-play':
+      void runPlay();
+      break;
+    case 'select-lead':
+      state.selectedLeadId = id;
+      render();
+      break;
+    case 'close-drawer':
+      state.selectedLeadId = null;
+      render();
+      break;
+    case 'select-draft':
+      state.selectedDraftId = id;
+      render();
+      break;
+    case 'approve':
+      void decide(id, 'approved');
+      break;
+    case 'reject':
+      void decide(id, 'rejected');
+      break;
+    case 'send':
+      void send(id);
+      break;
+    case 'select-run':
+      state.selectedRunId = id;
+      void asTenant(ACME, (q) => getRunSteps(q, ACME, id)).then((steps) => {
+        state.steps = steps;
+        render();
+      });
+      break;
+    case 'attack':
+      void runAttack((target.dataset.kind as 'write' | 'anon') ?? 'write');
+      break;
+    case 'verify-chain':
+      void reverifyChain();
+      break;
+    case 'dismiss-toast':
+      state.toast = null;
+      render();
+      break;
+    default:
+      break;
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state.selectedLeadId) {
+    state.selectedLeadId = null;
+    render();
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-async function boot(): Promise<void> {
-  renderIndex();
-  renderCards();
 
-  // Handlers are attached before the database exists; the buttons stay disabled
-  // until it is ready, so there is no window where a click is silently dropped.
-  $('run-all').addEventListener('click', () => {
-    void runAll();
-  });
-  $('reset').addEventListener('click', () => {
-    void resetDatabase();
-  });
+async function boot(): Promise<void> {
+  state.view = viewFromHash() ?? 'overview';
+  render();
 
   try {
-    setStatus('Booting PostgreSQL 18 (WebAssembly)…', 'pending');
     db = await PGlite.create();
+    state.bootStep = 1;
+    render();
 
-    setStatus('Applying schema, roles, policies and seed data…', 'pending');
     await db.exec(SCHEMA_SQL);
     await db.exec(ROLES_SQL);
     await db.exec(POLICIES_SQL);
+    await db.exec(OPS_SQL);
+    state.bootStep = 2;
+    render();
+
     await db.exec(SEED_SQL);
+    await db.exec(OPS_SEED_SQL);
+    state.bootStep = 3;
+    render();
 
-    const version = await db.query<{ version: string }>('select version()');
-    const short = version.rows[0]?.version.split(' on ')[0] ?? 'PostgreSQL';
-
-    setStatus(`Ready — ${short}. Press “Run all scenarios”.`, 'ready');
-    $<HTMLButtonElement>('run-all').disabled = false;
-    $<HTMLButtonElement>('reset').disabled = false;
-  } catch (error) {
-    setStatus(
-      `Database failed to boot: ${(error as Error).message}. This page needs WebAssembly and about 4 MB of download.`,
-      'error',
+    const summary = await asTenant(ACME, (q) =>
+      runSalesWorkflow({ db: q, now: () => new Date(), sleep }, {
+        userId: ACME,
+        goal: GOAL,
+        limit: 8,
+      }),
     );
+    state.lastRun = summary;
+    state.bootStep = 4;
+
+    state.stage = 'ready';
+    await refresh();
+  } catch (error) {
+    state.stage = 'error';
+    state.bootError = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error);
+    render();
   }
 }
 

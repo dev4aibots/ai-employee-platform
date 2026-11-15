@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 
-const SOURCES = ['schema.sql', 'roles.sql', 'policies.sql', 'seed.sql'];
+const SOURCES = ['schema.sql', 'roles.sql', 'policies.sql', 'seed.sql', 'ops.sql', 'ops_seed.sql'];
 const OUT = resolve(root, 'demo/src/generated/sql.ts');
 
 const parts = SOURCES.map((name) => {

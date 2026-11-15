@@ -2,9 +2,16 @@
 
 Ordered by what a reviewer would want next, not by what is fun to build.
 
+## Shipped
+
+- [x] **Live browser console.** PGlite boots PostgreSQL in the tab, applies `db/*.sql`, runs the operations pipeline, and renders the queue, the score attribution, the run ledger and the tenancy checks. No server, no keys.
+- [x] **Operations pipeline.** Lead selection, attributed scoring, deterministic drafting, approval gate, hash-chained decisions, claimed sends, per-run ledger.
+- [x] **Operations report.** `npm run report` reproduces every number the README quotes.
+
 ## Next
 
-- [ ] **Live browser demo.** Boot PGlite in the browser, apply `db/*.sql`, and let a visitor run the ten scenarios from `npm run demo` against real SQL. Static deploy, no server, no keys.
+- [ ] **A real `EmailProvider`.** Gmail or SES behind the existing interface, with the draft id passed as the provider's idempotency key and a reconciliation job for the crash-after-accept window.
+- [ ] **An LLM writer with a measured comparison.** Implement `DraftWriter` against a model, then run the same fixed lead set through both writers and score reply-worthiness blind. Until that measurement exists, the template writer stays the default.
 - [ ] **HTTP layer.** Thin handlers for the three entry points (inbound webhook, tenant query, dispatch) so the modules are exercised over the wire, with `supertest`-style tests.
 - [ ] **`workflow_runs` writer.** Persist the telemetry rows the demo currently computes in memory.
 - [ ] **GIN index on `to_tsvector(content)`** plus a 10k-document retrieval benchmark comparing lexical-only, dense-only and fused recall@5.

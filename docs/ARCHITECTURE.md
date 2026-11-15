@@ -63,6 +63,30 @@
 | `audit_log` | tenant or global | select own | append-only; no update/delete policy |
 | `webhook_receipts` | platform | no policy | idempotency keys, service-role only |
 
+## Operations layer
+
+The tenancy layer answers "who may see this row". The operations layer answers "what did the agent do, who approved it, and can it be replayed". They share the same database and the same policies.
+
+| Table | Purpose | Constraint that carries the guarantee |
+|---|---|---|
+| `leads` | one row per prospect, with stage and contact history | `unique (user_id, domain)`; stage is an enum |
+| `lead_signals` | observed evidence with the weight the scorer uses | weight is on the row, so scoring is re-tunable per tenant without a deploy |
+| `drafts` | generated outreach | `unique (user_id, content_hash)` — the idempotency key |
+| `approvals` | human decisions | `draft_id unique`; `unique (user_id, seq)` orders the hash chain |
+| `sends` | provider receipts | `draft_id unique`; status machine `sending → sent \| failed` |
+| `ops_runs` | one row per invocation | `status` is `running` only while the call is alive |
+| `ops_run_steps` | one row per step with latency and attempts | `unique (run_id, seq)` |
+
+Four decisions are worth spelling out because each one replaced a version that looked correct and was not.
+
+**The queue is the database.** The pipeline writes drafts and stops. There is no in-memory job list to lose, and the console reads the same rows the worker wrote. "Awaiting approval" is a `status` value, not a process state.
+
+**Idempotency is a content hash, not a lead id.** A deterministic writer means the same lead and the same signals produce the same bytes; the second insert collides and is skipped. That makes "run the play twice" safe, and it turns a non-deterministic writer into a test failure rather than a duplicate-email incident.
+
+**Sends are claimed before they are made.** `insert ... on conflict (draft_id) do nothing` with status `sending` is the lock. The winner calls the provider; the loser reads the row and either returns the receipt (`sent`) or refuses (`sending`). A crash leaves a `sending` row an operator can see, which is the honest failure mode.
+
+**Approvals are ordered by a per-tenant sequence.** A hash chain ordered by `decided_at` verifies in a different order than it was written when two decisions share a millisecond, and then reports tampering that never happened. `seq` is allocated as `max(seq)+1` with a unique constraint and a bounded retry; the chain is ordered by it and the hash covers it.
+
 ## Failure paths
 
 **n8n is down.** `dispatchToN8n` retries transient statuses with exponential backoff and full jitter (200 → 400 → 800 → 1600 ms by default, capped at 5 s). After `failureThreshold` consecutive failures the breaker opens, and calls return `{ shortCircuited: true, error: 'circuit_open' }` without a network round trip. After `openMs` the breaker half-opens: one probe is allowed, and success closes it.
@@ -74,6 +98,12 @@
 **A secret is missing at boot.** `loadConfig` collects every missing variable and throws once with the full list, rather than failing on the first one after accepting a default. Placeholder values are rejected outright when `NODE_ENV=production`.
 
 **The audit log is edited.** `verifyChain` returns the first index whose hash does not match, and separately whether the chain is internally consistent but shorter than expected (which is why the head hash has to be published somewhere out of band).
+
+**A draft is decided twice.** The second call finds the existing `approvals` row by `draft_id` and returns it with `alreadyRecorded: true`. A request carrying the opposite decision gets the stored decision back, not a new one. Flipping a rejection into an approval would require deleting the row, which has no policy.
+
+**A send fails.** The provider is retried inside one claim; if every attempt fails, `sends.status` becomes `failed` and the draft becomes `failed`. A later retry re-claims the row with `attempts + 1` and can succeed. The draft never silently becomes `sent`.
+
+**The process dies mid-run.** `runSalesWorkflow` catches, persists the steps it has, marks the run `failed`, and rethrows. A run that says `running` forever is a lie the console cannot detect, so the code does not allow it.
 
 ## Alternatives rejected
 
@@ -94,7 +124,8 @@
 Honest list, because "it scales" is not an answer:
 
 1. **In-memory token buckets** are per-process. Ten instances means ten times the intended rate. Fix: Redis with a Lua `INCR`+`EXPIRE`.
-2. **The audit chain is written by one process.** Concurrent writers would fork the chain. Fix: a single writer per tenant partition, or a monotonic `seq` allocated in the database with a `UNIQUE` constraint and retry on conflict.
+2. **The in-memory audit ledger is single-writer.** `src/audit/ledger.ts` keeps its chain in memory, so it is a reference implementation, not a shared store. The approvals chain already allocates `seq` in the database under a unique constraint with retry; the same treatment is what `audit_log` would need before multiple writers could append to one tenant's chain.
 3. **Hybrid search runs two full scans** on `documents`. At 10⁵ rows per tenant this needs the HNSW index from `db/pgvector.sql` plus a GIN index on `to_tsvector(content)`.
 4. **`webhook_receipts` grows without bound.** Fix: partition by month and drop partitions older than the provider's replay window (Stripe's is 3 days; 90 days is generous).
 5. **The circuit breaker is per-process.** Five instances each probe independently during a half-open window. Fix: shared state in Redis, or accept the extra probes and set `openMs` conservatively.
+6. **A send can still duplicate if the process dies after the provider accepted it.** The claim prevents concurrent sends and double retries inside one database, but the write that marks `sent` happens after the provider call. Fix: pass the draft id as the provider's idempotency key and reconcile on restart, which is the only way to close that window.

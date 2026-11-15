@@ -42,29 +42,85 @@ $ npm test
 
  RUN  v5.1.0
 
- ✓ tests/ratelimit.test.ts  (8 tests)
- ✓ tests/access.test.ts     (17 tests)
- ✓ tests/gateway.test.ts    (13 tests)
- ✓ tests/audit.test.ts      (15 tests)
- ✓ tests/telemetry.test.ts  (13 tests)
- ✓ tests/plans.test.ts      (10 tests)
- ✓ tests/vault.test.ts      (14 tests)
- ✓ tests/config.test.ts     (8 tests)
- ✓ tests/hmac.test.ts       (9 tests)
- ✓ tests/idempotency.test.ts (10 tests)
- ✓ tests/retrieval.test.ts  (12 tests)
- ✓ tests/rls.test.ts        (26 tests)
+ ✓ tests/access.test.ts        (17 tests)
+ ✓ tests/gateway.test.ts       (13 tests)
+ ✓ tests/vault.test.ts         (14 tests)
+ ✓ tests/config.test.ts         (8 tests)
+ ✓ tests/telemetry.test.ts     (13 tests)
+ ✓ tests/audit.test.ts         (15 tests)
+ ✓ tests/ops-scoring.test.ts   (21 tests)
+ ✓ tests/hmac.test.ts           (9 tests)
+ ✓ tests/plans.test.ts         (10 tests)
+ ✓ tests/ratelimit.test.ts      (8 tests)
+ ✓ tests/ops-pipeline.test.ts  (18 tests)
+ ✓ tests/idempotency.test.ts   (10 tests)
+ ✓ tests/rls.test.ts           (26 tests)
+ ✓ tests/retrieval.test.ts     (12 tests)
+ ✓ tests/ops-rls.test.ts        (8 tests)
 
- Test Files  12 passed (12)
-      Tests  155 passed (155)
-   Duration  5.56s
+ Test Files  15 passed (15)
+      Tests  202 passed (202)
+   Duration  8.31s
 ```
 
-No Docker, no network, no environment variables required. `tests/rls.test.ts`, `tests/idempotency.test.ts` and `tests/retrieval.test.ts` each boot a real PostgreSQL instance and execute the SQL in `db/`.
+No Docker, no network, no environment variables required. Six files boot a real PostgreSQL instance and execute the SQL in `db/`. `vitest.config.ts` caps the pool at four workers because six concurrent WASM databases exceed a modest laptop's memory and make startup time out — which looks like a failing test but is not one.
 
 ---
 
-## 3. Live demo
+## 3. Operations report
+
+The command runs the play against the 140-lead fixture, makes a day of decisions, sends the approved drafts through the dry-run provider, and prints counts read back from the database.
+
+```
+$ npm run report
+> tsx src/cli/report.ts
+
+ai-employee-platform :: operations report
+fixture   db/ops_seed.sql (140 leads, 2 tenants, deterministic)
+clock     2026-11-15T12:16:39.235Z
+
+PLAY  Find leads that have not replied in 7 days, rank them, draft the outreach
+  leads examined         96
+  drafts created          8
+  drafts skipped          0   (content hash already present)
+  tokens / cost           0 / $0.000000   (offline writer, no model call)
+  step latency        p50 2 ms   p95 14 ms
+
+DECISIONS
+  approved                6
+  rejected                2
+  chain               verified (8 entries)
+
+SENDS
+  sent                    6   (provider: dry-run)
+  failed                  0
+  provider receipts       6 unique
+
+PIPELINE
+  leads                 140   qualified 46   contacted 37   replied 8
+  queue                   0 pending   decisions per draft 100.0%
+  runs                    1   success 100.0%   failed 0
+  score bands         5 hot   75 warm   28 cool   32 cold   avg 50.5
+
+SOURCES
+  event      leads   28   replies    4   reply rate 14.3%
+  inbound    leads   28   replies    4   reply rate 14.3%
+  outbound   leads   28   replies    4   reply rate 14.3%
+  partner    leads   28   replies    4   reply rate 14.3%
+  referral   leads   28   replies    4   reply rate 14.3%
+
+RUN LEDGER
+  9fadf1b1  awaiting_approval leads   96  drafts   8  $0.000000
+
+NOTE  Fixture numbers from db/ops_seed.sql, not customer data.
+      Reproduce with: npm run report   (2224 ms)
+```
+
+The `cost` and `tokens` fields are `0` because `templateWriter` makes no model call and reports that honestly. Run the same numbers twice and the second run reports `drafts created 0` — the content hashes already exist.
+
+---
+
+## 4. Tenancy demo
 
 ```
 $ npm run demo
@@ -157,17 +213,37 @@ Section 4 prints a ciphertext prefix that changes on every run because the IV is
 
 ---
 
-## 4. What is deliberately not verified here
+## 5. Browser console
+
+Verified in Chrome on this machine against the production build (`vite build` + `vite preview`):
+
+| Check | Result |
+|---|---|
+| Boot (schema, roles, policies, ops schema, seed, first run) | completes in ~2s; no console errors |
+| Overview | 140 leads, 8 awaiting approval, funnel and source counts match `npm run report` |
+| Leads | 140 rows; drawer shows the contributions and the signal behind each score |
+| Approvals | approve → queue drops 8→7, decided row shows `approved`, audit chip becomes `1 verified` |
+| Send | dry-run receipt returned; draft becomes `sent`; lead stage becomes `contacted` |
+| Isolation | `leads 140 / 0`, `drafts 8 / 0`; both attack buttons return the PostgreSQL error |
+| Run play (second time) | `96 leads examined, 0 new drafts: every content hash already exists` |
+
+The earlier version of this demo had a real bug: two concurrent `asTenant` calls on one PGlite session reset each other's role, so the isolation table showed `0 / 0` for every table. The console now serialises identity switches behind a queue, and `tests/ops-pipeline.test.ts` covers the single-session rule in Node.
+
+---
+
+## 6. What is deliberately not verified here
 
 Listed so nobody has to discover it:
 
 | Claim | Status |
 |---|---|
+| A real email provider sends the draft | Not implemented. `EmailProvider` is the seam; the shipped provider is `dry-run` and returns a deterministic receipt. |
+| An LLM writes the draft | Not enabled. `DraftWriter` is the interface; `templateWriter` is the implementation and reports zero tokens. |
 | Runs on a live Supabase project | Not tested in this repo. The SQL is Supabase-shaped (`auth.uid()`, `authenticated`/`anon`/`service_role`) but a live-project run is a roadmap item. |
 | Real Stripe/PayPal webhook delivery | Signature verification and idempotency are tested; the HTTP endpoints that call them are not part of this repo. |
 | Live n8n instance | Dispatch is tested against a stubbed `fetch` that returns real HTTP status codes. No n8n container is started. |
 | Vector index performance at scale | The portable schema uses `double precision[]`; `db/pgvector.sql` adds the native column and HNSW index, but no large-corpus benchmark has been run. |
-| Production load / concurrency | Not benchmarked. The idempotency claim is tested for correctness under 8 concurrent callers inside one process, not under network concurrency. |
+| Production load / concurrency | Not benchmarked. The approval and send races are tested inside one process; cross-process concurrency relies on the database constraints, not on a load test. |
 
 ---
 
@@ -177,8 +253,8 @@ Listed so nobody has to discover it:
 npm ci
 npm run typecheck
 npm test
+npm run report
 npm run demo
 ```
 
 If any command above fails on a clean clone, that is a bug and the receipt above is wrong. Open an issue.
-

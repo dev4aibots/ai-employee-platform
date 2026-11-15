@@ -35,6 +35,9 @@ jobs:
       - name: test
         run: npm test
 
+      - name: operations report
+        run: npm run report
+
       - name: demo (smoke)
         run: npm run demo
 

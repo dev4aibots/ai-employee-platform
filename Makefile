@@ -1,4 +1,4 @@
-.PHONY: install verify test typecheck demo db-up db-down psql clean
+.PHONY: install verify test typecheck demo report gen db-up db-down psql clean
 
 install:
 	npm ci
@@ -13,6 +13,13 @@ test:
 
 demo:
 	npm run demo
+
+report:
+	npm run report
+
+# Regenerate the SQL module embedded in the browser demo.
+gen:
+	node scripts/gen-sql.mjs
 
 # Optional: a real Postgres with pgvector, for running the SQL outside the
 # in-process harness. Not required for `make verify`.

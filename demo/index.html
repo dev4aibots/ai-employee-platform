@@ -3,105 +3,28 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ai-employee-platform — live tenant isolation demo</title>
+    <title>AI Employee · operations console</title>
     <meta
       name="description"
-      content="Run the real PostgreSQL policies from ai-employee-platform in your browser. Two tenants, one attacker, no server."
+      content="A working AI operations console: real PostgreSQL in the browser, lead scoring with attribution, human approval gates, a hash-chained audit log and a per-run ledger."
     />
-    <meta name="color-scheme" content="dark light" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0a0b0d" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
   </head>
   <body>
-    <header class="masthead">
-      <div class="masthead__inner">
-        <a class="brand" href="https://github.com/dev4aibots/ai-employee-platform">
-          <span class="brand__mark" aria-hidden="true"></span>
-          <span class="brand__text">ai-employee-platform</span>
-        </a>
-        <nav class="masthead__nav">
-          <a href="https://github.com/dev4aibots/ai-employee-platform">source</a>
-          <a href="https://github.com/dev4aibots/ai-employee-platform/blob/main/docs/ARCHITECTURE.md">architecture</a>
-          <a href="https://dev4aibots.com">dev4aibots.com</a>
-        </nav>
+    <div id="app"></div>
+    <noscript>
+      <div style="padding: 40px; font-family: system-ui, sans-serif">
+        This console boots a database in your browser and needs JavaScript. The repository has the same
+        pipeline running under Node: <code>npm test</code> and <code>npm run report</code>.
       </div>
-    </header>
-
-    <main>
-      <section class="hero">
-        <p class="hero__eyebrow">Live execution · no server · no keys</p>
-        <h1>Two tenants, one attacker, real PostgreSQL.</h1>
-        <p class="hero__lede">
-          This page boots PostgreSQL 18 compiled to WebAssembly inside your browser, applies the exact
-          <code>schema.sql</code> and <code>policies.sql</code> from the repository, and then tries to break
-          tenancy. Every number and every denial below is produced by the database in front of you, not by a
-          recording.
-        </p>
-        <div class="hero__actions">
-          <button id="run-all" class="btn btn--primary" disabled>Run all scenarios</button>
-          <button id="reset" class="btn" disabled>Reset database</button>
-        </div>
-        <p id="boot-status" class="status status--pending" role="status" aria-live="polite">
-          Booting PostgreSQL…
-        </p>
-      </section>
-
-      <section class="layout">
-        <aside class="scenarios" aria-labelledby="scenarios-heading">
-          <h2 id="scenarios-heading">Scenarios</h2>
-          <ol id="scenario-list" class="scenario-list"></ol>
-        </aside>
-
-        <section class="output" aria-labelledby="output-heading">
-          <div class="output__head">
-            <h2 id="output-heading">Database output</h2>
-            <span id="output-meta" class="output__meta">idle</span>
-          </div>
-          <div id="output-body" class="output__body">
-            <p class="placeholder">Run a scenario to see what the database actually returns.</p>
-          </div>
-        </section>
-      </section>
-
-      <section class="notes">
-        <h2>What is and is not happening here</h2>
-        <ul>
-          <li>
-            <strong>Real.</strong> The schema, the row level security policies, the privilege guard trigger and the
-            seed data are byte-for-byte the files in <code>db/</code>. The queries run as the
-            <code>authenticated</code> Postgres role with the tenant's id set in
-            <code>request.jwt.claim.sub</code>, which is how Supabase passes identity.
-          </li>
-          <li>
-            <strong>Real.</strong> Denials are PostgreSQL errors and empty result sets, not UI theatre. If a policy
-            were removed, these scenarios would succeed and say so.
-          </li>
-          <li>
-            <strong>Not here.</strong> The credential vault, HMAC verification, retry policy and audit ledger are
-            covered by the test suite and <code>npm run demo</code> in the repository. They are pure Node modules
-            and have no meaning in a browser tab.
-          </li>
-          <li>
-            <strong>Not here.</strong> No network calls, no analytics, no cookies. Close the tab and the database is
-            gone.
-          </li>
-        </ul>
-      </section>
-    </main>
-
-    <footer class="footer">
-      <p>
-        Built by
-        <a href="https://dev4aibots.com">Devraj Gadhvi</a> ·
-        <a href="https://github.com/dev4aibots/ai-employee-platform">source</a> ·
-        MIT
-      </p>
-    </footer>
-
+    </noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
