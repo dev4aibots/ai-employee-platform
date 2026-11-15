@@ -66,3 +66,20 @@ jobs:
             fi
           done < <(grep -rhoE "env\.[A-Z][A-Z0-9_]+" src/ | sed 's/^env\.//' | sort -u)
           exit $missing
+
+  demo:
+    name: browser demo builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: generated SQL is in sync with db/
+        run: node scripts/gen-sql.mjs --check
+      - name: build
+        working-directory: demo
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+

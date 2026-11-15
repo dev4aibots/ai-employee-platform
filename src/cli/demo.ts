@@ -1,5 +1,5 @@
-﻿/**
- * Live demo. Every line below is printed from real execution â€” no recorded
+/**
+ * Live demo. Every line below is printed from real execution — no recorded
  * fixtures, no mocked responses. `npm run demo` is the fastest way to see the
  * platform behave.
  */
@@ -14,12 +14,12 @@ import { summarizeRuns } from '../telemetry/cost.js';
 import { IdempotencyService } from '../webhooks/idempotency.js';
 import { resolveAccess } from '../tenancy/access.js';
 
-const rule = (label: string) => console.log(`\n${'â”€'.repeat(72)}\n${label}\n${'â”€'.repeat(72)}`);
+const rule = (label: string) => console.log(`\n${'─'.repeat(72)}\n${label}\n${'─'.repeat(72)}`);
 
 const h = await createHarness();
 
 // ---------------------------------------------------------------------------
-rule('1. Tenant isolation â€” the same query, two sessions, two answers');
+rule('1. Tenant isolation — the same query, two sessions, two answers');
 
 for (const [label, tenant] of [
   ['Acme  ', TENANT_A],
@@ -39,7 +39,7 @@ console.log(`  Acme asking for Globex's document by id  -> ${theft.rows.length} 
 console.log(`  Acme asking for Globex's employee by id  -> ${ghostEmployee.rows.length} rows returned`);
 
 // ---------------------------------------------------------------------------
-rule('2. Privilege escalation â€” a tenant trying to give itself a better deal');
+rule('2. Privilege escalation — a tenant trying to give itself a better deal');
 
 for (const [label, sql] of [
   ["set plan to 'scale'", `update profiles set plan = 'scale' where id = $1`],
@@ -48,14 +48,14 @@ for (const [label, sql] of [
 ] as const) {
   try {
     await h.asTenant(TENANT_A, (q) => q.query(sql, [TENANT_A]));
-    console.log(`  âœ— ${label}: ALLOWED (this is a bug)`);
+    console.log(`  ✗ ${label}: ALLOWED (this is a bug)`);
   } catch (error) {
-    console.log(`  âœ“ ${label}: blocked â€” ${(error as Error).message.split('_blocked')[0]}`);
+    console.log(`  ✓ ${label}: blocked — ${(error as Error).message.split('_blocked')[0]}`);
   }
 }
 
 // ---------------------------------------------------------------------------
-rule('3. Access decisions â€” pure function, injected clock');
+rule('3. Access decisions — pure function, injected clock');
 
 const now = new Date('2026-11-15T10:00:00Z');
 const cases = [
@@ -87,20 +87,20 @@ for (const c of cases) {
 }
 
 // ---------------------------------------------------------------------------
-rule('4. Credential vault â€” encryption, tenant binding, rotation');
+rule('4. Credential vault — encryption, tenant binding, rotation');
 
 const secret = 'demo-hubspot-token-not-a-real-value';
 const v1 = new Vault({ masterKey: 'demo-master-key-not-a-real-secret' });
 const sealed = v1.encrypt(secret, { userId: TENANT_A, provider: 'hubspot' });
 console.log(`  plaintext : ${secret}`);
-console.log(`  at rest   : ${sealed.ciphertext.slice(0, 52)}â€¦`);
+console.log(`  at rest   : ${sealed.ciphertext.slice(0, 52)}…`);
 console.log(`  decrypt   : ${v1.decrypt(sealed.ciphertext, { userId: TENANT_A, provider: 'hubspot' })}`);
 
 try {
   v1.decrypt(sealed.ciphertext, { userId: TENANT_B, provider: 'hubspot' });
-  console.log('  âœ— tenant B decrypted tenant A secret (this is a bug)');
+  console.log('  ✗ tenant B decrypted tenant A secret (this is a bug)');
 } catch {
-  console.log('  âœ“ tenant B cannot decrypt tenant A secret (bound to tenant + provider)');
+  console.log('  ✓ tenant B cannot decrypt tenant A secret (bound to tenant + provider)');
 }
 
 const rotated = new Vault({ masterKey: 'demo-master-key-not-a-real-secret', keyVersions: ['v2', 'v1'] });
@@ -108,7 +108,7 @@ const fresh = rotated.rotate(sealed.ciphertext, { userId: TENANT_A, provider: 'h
 console.log(`  rotation  : ${sealed.ciphertext.slice(0, 2)} -> ${fresh.keyVersion}, value preserved = ${rotated.decrypt(fresh.ciphertext, { userId: TENANT_A, provider: 'hubspot' }) === secret}`);
 
 // ---------------------------------------------------------------------------
-rule('5. Webhook idempotency â€” Stripe retries the same event three times');
+rule('5. Webhook idempotency — Stripe retries the same event three times');
 
 const idem = await h.asService(async (q) => {
   const svc = new IdempotencyService(q);
@@ -129,7 +129,7 @@ console.log(`  delivery 2        -> ${idem.second.status} (no second email, no s
 console.log(`  same key, new body-> ${idem.tampered.status} (${idem.tampered.status === 'conflict' ? (idem.tampered as { reason: string }).reason : ''})`);
 
 // ---------------------------------------------------------------------------
-rule('6. Inbound signature verification â€” replay and tamper');
+rule('6. Inbound signature verification — replay and tamper');
 
 const secretKey = 'demo-webhook-shared-secret';
 const ts = Math.floor(now.getTime() / 1000);
@@ -144,7 +144,7 @@ console.log(`  replayed 1h later -> ok=${replayed.ok} reason=${replayed.reason}`
 console.log(`  body tampered     -> ok=${tampered.ok} reason=${tampered.reason}`);
 
 // ---------------------------------------------------------------------------
-rule('7. Hybrid retrieval â€” exact identifiers next to paraphrase');
+rule('7. Hybrid retrieval — exact identifiers next to paraphrase');
 
 await h.asTenant(TENANT_A, (q) =>
   q.query(
@@ -164,10 +164,10 @@ for (const hit of hits) {
     `  ${hit.score.toFixed(5)}  lexical=${String(hit.lexicalRank ?? '-').padStart(2)}  vector=${String(hit.vectorRank ?? '-').padStart(2)}  ${hit.title}`,
   );
 }
-console.log('  (a document ranked by only one arm scores lower â€” that is RRF doing its job)');
+console.log('  (a document ranked by only one arm scores lower — that is RRF doing its job)');
 
 // ---------------------------------------------------------------------------
-rule('8. Audit ledger â€” hash chain and tamper detection');
+rule('8. Audit ledger — hash chain and tamper detection');
 
 const ledger = new AuditLedger();
 ledger.append({ userId: TENANT_A, actor: 'ops@acme.test', action: 'employee.deploy', subject: 'support-agent', payload: { plan: 'growth' }, createdAt: '2026-11-15T10:00:00.000Z' });
@@ -175,7 +175,7 @@ ledger.append({ userId: TENANT_A, actor: 'ops@acme.test', action: 'credential.st
 ledger.append({ userId: TENANT_A, actor: 'billing', action: 'plan.change', subject: TENANT_A, payload: { from: 'starter', to: 'growth' }, createdAt: '2026-11-15T10:02:00.000Z' });
 
 console.log(`  entries           : ${ledger.all().length}`);
-console.log(`  head hash         : ${ledger.head.slice(0, 24)}â€¦`);
+console.log(`  head hash         : ${ledger.head.slice(0, 24)}…`);
 console.log(`  chain valid       : ${AuditLedger.verifyChain(ledger.all()).valid}`);
 
 const forged = ledger.all().map((e) => ({ ...e }));
@@ -184,7 +184,7 @@ const broken = AuditLedger.verifyChain(forged);
 console.log(`  after edit entry 1: valid=${broken.valid} brokenAt=${broken.brokenAt} (${broken.reason})`);
 
 // ---------------------------------------------------------------------------
-rule('9. Retry policy â€” bounded, jittered, deterministic to test');
+rule('9. Retry policy — bounded, jittered, deterministic to test');
 
 console.log(`  backoff schedule (no jitter): ${[0, 1, 2, 3, 4].map((a) => backoffDelay(a, { maxAttempts: 5, baseDelayMs: 200, maxDelayMs: 5000, jitterRatio: 0 })).join('ms, ')}ms`);
 
@@ -203,5 +203,5 @@ console.log(`  latency p50/p95 : ${summary.latencyP50Ms}ms / ${summary.latencyP9
 console.log(`  cost by model   : ${Object.entries(summary.costByModel).map(([m, c]) => `${m}=$${c.toFixed(6)}`).join(', ')}`);
 
 await h.close();
-console.log(`\n${'â•'.repeat(72)}\nAll sections executed against a live in-process PostgreSQL.\n${'â•'.repeat(72)}`);
+console.log(`\n${'═'.repeat(72)}\nAll sections executed against a live in-process PostgreSQL.\n${'═'.repeat(72)}`);
 

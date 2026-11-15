@@ -1,4 +1,4 @@
-﻿# Verification receipt
+# Verification receipt
 
 Everything in this file was produced by running the commands on the machine described below. It is a transcript, not a summary. Re-run each command and you should get the same shape of output; only hashes, ciphertext and timings will differ.
 
@@ -42,18 +42,18 @@ $ npm test
 
  RUN  v5.1.0
 
- âœ“ tests/ratelimit.test.ts  (8 tests)
- âœ“ tests/access.test.ts     (17 tests)
- âœ“ tests/gateway.test.ts    (13 tests)
- âœ“ tests/audit.test.ts      (15 tests)
- âœ“ tests/telemetry.test.ts  (13 tests)
- âœ“ tests/plans.test.ts      (10 tests)
- âœ“ tests/vault.test.ts      (14 tests)
- âœ“ tests/config.test.ts     (8 tests)
- âœ“ tests/hmac.test.ts       (9 tests)
- âœ“ tests/idempotency.test.ts (10 tests)
- âœ“ tests/retrieval.test.ts  (12 tests)
- âœ“ tests/rls.test.ts        (26 tests)
+ ✓ tests/ratelimit.test.ts  (8 tests)
+ ✓ tests/access.test.ts     (17 tests)
+ ✓ tests/gateway.test.ts    (13 tests)
+ ✓ tests/audit.test.ts      (15 tests)
+ ✓ tests/telemetry.test.ts  (13 tests)
+ ✓ tests/plans.test.ts      (10 tests)
+ ✓ tests/vault.test.ts      (14 tests)
+ ✓ tests/config.test.ts     (8 tests)
+ ✓ tests/hmac.test.ts       (9 tests)
+ ✓ tests/idempotency.test.ts (10 tests)
+ ✓ tests/retrieval.test.ts  (12 tests)
+ ✓ tests/rls.test.ts        (26 tests)
 
  Test Files  12 passed (12)
       Tests  155 passed (155)
@@ -71,24 +71,24 @@ $ npm run demo
 ```
 
 ```
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-1. Tenant isolation â€” the same query, two sessions, two answers
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+────────────────────────────────────────────────────────────────────────
+1. Tenant isolation — the same query, two sessions, two answers
+────────────────────────────────────────────────────────────────────────
   Acme   sees: Acme refund policy
   Globex sees: Globex freight SLA
   Acme asking for Globex's document by id  -> 0 rows returned
   Acme asking for Globex's employee by id  -> 0 rows returned
 
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-2. Privilege escalation â€” a tenant trying to give itself a better deal
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  âœ“ set plan to 'scale': blocked â€” privilege_escalation
-  âœ“ grant 500 seats: blocked â€” privilege_escalation
-  âœ“ become superadmin: blocked â€” privilege_escalation
+────────────────────────────────────────────────────────────────────────
+2. Privilege escalation — a tenant trying to give itself a better deal
+────────────────────────────────────────────────────────────────────────
+  ✓ set plan to 'scale': blocked — privilege_escalation
+  ✓ grant 500 seats: blocked — privilege_escalation
+  ✓ become superadmin: blocked — privilege_escalation
 
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-3. Access decisions â€” pure function, injected clock
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+────────────────────────────────────────────────────────────────────────
+3. Access decisions — pure function, injected clock
+────────────────────────────────────────────────────────────────────────
   active    -> ALLOW [ok]  Subscription active.
   trialing  -> ALLOW [trial_active]  Trial is active.
   trialing  -> DENY  [trial_expired]  Trial ended. Choose a plan to keep your AI employees running.
@@ -96,64 +96,64 @@ $ npm run demo
   past_due  -> DENY  [past_due]  Payment failed. Update the payment method to restore access.
   canceled  -> DENY  [canceled]  Subscription canceled. Reactivate to continue.
 
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-4. Credential vault â€” encryption, tenant binding, rotation
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+────────────────────────────────────────────────────────────────────────
+4. Credential vault — encryption, tenant binding, rotation
+────────────────────────────────────────────────────────────────────────
   plaintext : demo-hubspot-token-not-a-real-value
-  at rest   : v1:PM0xug2drgmXCD+A:22xnHriNlPJt/fTIRlcNSM/OKwGkujoNâ€¦
+  at rest   : v1:PM0xug2drgmXCD+A:22xnHriNlPJt/fTIRlcNSM/OKwGkujoN…
   decrypt   : demo-hubspot-token-not-a-real-value
-  âœ“ tenant B cannot decrypt tenant A secret (bound to tenant + provider)
+  ✓ tenant B cannot decrypt tenant A secret (bound to tenant + provider)
   rotation  : v1 -> v2, value preserved = true
 
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-5. Webhook idempotency â€” Stripe retries the same event three times
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+────────────────────────────────────────────────────────────────────────
+5. Webhook idempotency — Stripe retries the same event three times
+────────────────────────────────────────────────────────────────────────
   delivery 1        -> claimed
   delivery 2        -> duplicate (no second email, no second charge)
   same key, new body-> conflict (idempotency key reused with a different payload)
 
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-6. Inbound signature verification â€” replay and tamper
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+────────────────────────────────────────────────────────────────────────
+6. Inbound signature verification — replay and tamper
+────────────────────────────────────────────────────────────────────────
   valid signature   -> ok=true
   replayed 1h later -> ok=false reason=stale_timestamp
   body tampered     -> ok=false reason=signature_mismatch
 
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-7. Hybrid retrieval â€” exact identifiers next to paraphrase
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+────────────────────────────────────────────────────────────────────────
+7. Hybrid retrieval — exact identifiers next to paraphrase
+────────────────────────────────────────────────────────────────────────
   0.03279  lexical= 1  vector= 1  Acme refund policy
   0.03200  lexical= 2  vector= 3  Bearing kit lookup
   0.01613  lexical= -  vector= 2  Hardware warranty
-  (a document ranked by only one arm scores lower â€” that is RRF doing its job)
+  (a document ranked by only one arm scores lower — that is RRF doing its job)
 
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-8. Audit ledger â€” hash chain and tamper detection
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+────────────────────────────────────────────────────────────────────────
+8. Audit ledger — hash chain and tamper detection
+────────────────────────────────────────────────────────────────────────
   entries           : 3
-  head hash         : 2af2a6cd36de244db3d53defâ€¦
+  head hash         : 2af2a6cd36de244db3d53def…
   chain valid       : true
   after edit entry 1: valid=false brokenAt=1 (entry 1 hash does not match its contents)
 
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-9. Retry policy â€” bounded, jittered, deterministic to test
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+────────────────────────────────────────────────────────────────────────
+9. Retry policy — bounded, jittered, deterministic to test
+────────────────────────────────────────────────────────────────────────
   backoff schedule (no jitter): 200ms, 400ms, 800ms, 1600ms, 3200ms
 
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+────────────────────────────────────────────────────────────────────────
 10. Cost and latency telemetry
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+────────────────────────────────────────────────────────────────────────
   runs            : 4
   total cost      : $0.035445
   latency p50/p95 : 420ms / 2400ms
   cost by model   : gpt-4o-mini=$0.000495, claude-sonnet-4.6=$0.034950
 
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+════════════════════════════════════════════════════════════════════════
 All sections executed against a live in-process PostgreSQL.
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+════════════════════════════════════════════════════════════════════════
 ```
 
-Section 4 prints a ciphertext prefix that changes on every run because the IV is random â€” that is the point. The plaintext in the demo is a fake token, present so the round trip is visibly real.
+Section 4 prints a ciphertext prefix that changes on every run because the IV is random — that is the point. The plaintext in the demo is a fake token, present so the round trip is visibly real.
 
 ---
 

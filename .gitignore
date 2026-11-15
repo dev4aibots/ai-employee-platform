@@ -9,3 +9,6 @@ coverage/
 .DS_Store
 Thumbs.db
 *.tsbuildinfo
+# demo build output
+demo/node_modules/
+demo/dist/
