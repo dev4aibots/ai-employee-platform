@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aiep-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ai_employees
+    ports:
+      - '5432:5432'
+    volumes:
+      - ./db:/schema:ro
+      - aiep-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d ai_employees']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  aiep-data:
