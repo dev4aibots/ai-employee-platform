@@ -6,9 +6,11 @@ Built as a sanitised, independently testable extraction of a private product I r
 
 | | |
 |---|---|
+| **Live demo** | [ai-employee-platform-dev4aibots.vercel.app](https://ai-employee-platform-dev4aibots.vercel.app) — boots PostgreSQL in your browser and runs 12 adversarial tenancy attempts. Also on [GitHub Pages](https://dev4aibots.github.io/ai-employee-platform/). |
 | **Execution mode** | Real code. `npm test` boots PostgreSQL in-process (WASM) and runs the shipped SQL. No mocks, no Docker. |
 | **Tests** | 155 passing across 12 files — `npm test` |
 | **Type safety** | `strict` TypeScript, `tsc --noEmit` clean |
+| **CI** | typecheck + tests on Node 20/22/24, gitleaks, env-contract check, demo build |
 | **Authorship** | Solo. Original architecture and code. |
 | **External dependencies** | One runtime dependency (`@electric-sql/pglite`) |
 
@@ -95,6 +97,8 @@ Full detail, including the failure paths and the alternatives I rejected, is in 
 ---
 
 ## Quickstart
+
+**See it running first:** [ai-employee-platform-dev4aibots.vercel.app](https://ai-employee-platform-dev4aibots.vercel.app) runs the real policies in your browser and shows a pass/fail verdict for each attack.
 
 ```bash
 git clone https://github.com/dev4aibots/ai-employee-platform.git
