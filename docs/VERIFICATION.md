@@ -57,10 +57,11 @@ $ npm test
  ✓ tests/rls.test.ts           (26 tests)
  ✓ tests/retrieval.test.ts     (12 tests)
  ✓ tests/ops-rls.test.ts        (8 tests)
+ ✓ tests/hash.test.ts           (7 tests)
 
- Test Files  15 passed (15)
-      Tests  202 passed (202)
-   Duration  8.31s
+ Test Files  16 passed (16)
+      Tests  209 passed (209)
+   Duration  10.45s
 ```
 
 No Docker, no network, no environment variables required. Six files boot a real PostgreSQL instance and execute the SQL in `db/`. `vitest.config.ts` caps the pool at four workers because six concurrent WASM databases exceed a modest laptop's memory and make startup time out — which looks like a failing test but is not one.

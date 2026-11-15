@@ -17,8 +17,7 @@
     "report": "tsx src/cli/report.ts"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.5.16",
-    "@noble/hashes": "^1.8.0"
+    "@electric-sql/pglite": "^0.5.16"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

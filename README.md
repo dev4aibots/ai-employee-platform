@@ -10,7 +10,7 @@ Built as a sanitised, independently testable extraction of a private multi-tenan
 |---|---|
 | **Live console** | [ai-employee-platform-dev4aibots.vercel.app](https://ai-employee-platform-dev4aibots.vercel.app) — boots PostgreSQL in the browser and runs this pipeline for real. Also on [GitHub Pages](https://dev4aibots.github.io/ai-employee-platform/). |
 | **Execution mode** | Real code. `npm test` boots PostgreSQL in-process (WASM) and runs the shipped SQL and the shipped TypeScript. No mocks, no Docker. |
-| **Tests** | 202 passing across 15 files — `npm test` |
+| **Tests** | 209 passing across 16 files — `npm test` |
 | **Type safety** | `strict` TypeScript, `tsc --noEmit` clean |
 | **CI** | typecheck + tests on Node 20/22/24, operation report, gitleaks, env-contract check, demo build, generated-SQL drift check |
 | **Runtime dependencies** | `@electric-sql/pglite`, `@noble/hashes` |
@@ -208,7 +208,7 @@ git clone https://github.com/dev4aibots/ai-employee-platform.git
 cd ai-employee-platform
 npm ci
 
-npm test          # 202 tests, ~8s, no Docker
+npm test          # 209 tests, ~10s, no Docker
 npm run typecheck # strict tsc
 npm run report    # the operations report above
 npm run demo      # the tenancy scenarios from the original build
@@ -278,7 +278,7 @@ src/util/      isomorphic SHA-256 + UUID (browser and Node)
 src/db/        in-process Postgres harness with tenant impersonation
 src/cli/       demo and operations report
 demo/          the browser console (Vite + PGlite, no server)
-tests/         adversarial suite (202 tests)
+tests/         adversarial suite (209 tests)
 ```
 
 ## License
